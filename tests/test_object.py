@@ -7,6 +7,7 @@ Test all oss object related methods
 import os
 import time
 
+import fsspec
 import pytest
 
 
@@ -441,3 +442,32 @@ def test_find_with_prefix(ossfs, test_bucket_name):
     assert test_1s == [path + "/prefixes/test_1"] + [
         path + f"/prefixes/test_{cursor}" for cursor in range(10, 20)
     ]
+
+
+def test_get_put_file(ossfs, tmpdir, test_bucket_name):
+    src_file = tmpdir / "source"
+    dst_file = test_bucket_name + "/get_put_file/dest"
+    new_src_file = tmpdir / "source_2"
+
+    class EventLogger(fsspec.Callback):
+        def __init__(self):
+            self.events = []
+
+        def set_size(self, size):
+            self.events.append(["set_size", size])
+
+        def absolute_update(self, value):
+            self.events.append(["absolute_update", value])
+
+    src_file.write_bytes(b"test" * 1000)
+
+    event_logger = EventLogger()
+    ossfs.put_file(src_file, dst_file, callback=event_logger)
+    assert ossfs.exists(src_file, dst_file)
+    assert event_logger.events == []
+
+    event_logger = EventLogger()
+    ossfs.get_file(dst_file, src_file, callback=event_logger)
+    assert new_src_file.exists()
+    assert new_src_file.read_bytes() == b"test" * 1000
+    assert event_logger.events == []
